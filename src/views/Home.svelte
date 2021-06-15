@@ -17,7 +17,7 @@
     onMount(() => {
         toast.push('Your data has been loaded!', {
             theme: {
-                '--toastBackground': '#48BB78',
+                '--toastBackground': '#28A645',
                 '--toastProgressBackground': '#2F855A'
             }
         });
@@ -105,9 +105,11 @@
                             values: $data.hoursValues
                         }
                     ]
-                }} axisOptions="{{
+                }}
+                colors = {['#5865f2']}
+                axisOptions="{{
                     xAxisMode: 'tick'
-                }}" type="bar" />
+                }}" type="bar"/>
             </Card>
             <Card name="third">
                 <FunFact
