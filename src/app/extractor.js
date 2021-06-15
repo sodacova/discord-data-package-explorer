@@ -239,7 +239,7 @@ export const extractData = async (files) => {
     extractedData.topDMs = extractedData.channels
         .filter((channel) => channel.isDM)
         .sort((a, b) => b.messages.length - a.messages.length)
-        .slice(0, 10);
+        .slice(0, 20);
     await Promise.all(extractedData.topDMs.map((channel) => {
         return new Promise((resolve) => {
             fetchUser(channel.dmUserID).then((userData) => {
