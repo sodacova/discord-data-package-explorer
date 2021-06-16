@@ -1,7 +1,7 @@
 <script>
     import { fly } from 'svelte/transition';
     import { data } from "../app/store";
-    import { generateAvatarURL, getGitHubContributors, getCreatedTimestamp } from '../app/helpers';
+    import { generateAvatarURL, getGitHubContributors } from '../app/helpers';
     import Chart from 'svelte-frappe-charts';
     import Modal from '../components/Modal.svelte';
     import { getContext, onMount } from 'svelte';
