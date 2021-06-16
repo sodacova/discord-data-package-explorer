@@ -17,7 +17,7 @@ const fetchUser = async (userID) => {
     if (!res || !res.data) return {
         username: 'Unknown',
         discriminator: '0000',
-        avatar: null
+        avatar: null,
     };
     return res.data;
 };

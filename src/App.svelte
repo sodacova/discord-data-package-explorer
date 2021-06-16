@@ -20,7 +20,7 @@
 <main class="app">
 	<SvelteToast {options} />
 	<Modal
-		styleContent={{ 'background-color': '#18191c', color: 'white' }}
+		styleContent={{ 'background-color': '#1d1d1d', color: 'white' }}
 		closeButton={false}
 	>
 		{#if $loaded}
