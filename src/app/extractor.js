@@ -13,7 +13,11 @@ import { snakeCase } from 'snake-case';
  * @param userID The ID of the user to fetch
  */
 const fetchUser = async (userID) => {
-    const res = await axios(`https://diswho.androz2091.fr/user/${userID}`).catch(() => {});
+    const res = await axios(`https://diswho.androz2091.fr/user/${userID}`, {
+        headers: {
+            Authorization: `Bearer ${localStorage.getItem('diswhoJwt')}`
+        }
+    }).catch(() => {});
     if (!res || !res.data) return {
         username: 'Unknown',
         discriminator: '0000',
@@ -112,11 +116,14 @@ export const extractData = async (files) => {
 
     const extractedData = {
         user: null,
-        channels: [],
-        guilds: [],
 
         topDMs: [],
+        topChannels: [],
+        guildCount: 0,
+        dmChannelCount: 0,
+        channelCount: 0,
         messageCount: 0,
+        characterCount: 0,
         totalSpent: 0,
         hoursValues: [],
         favoriteWords: null,
@@ -148,13 +155,14 @@ export const extractData = async (files) => {
     // Parse and load current user informations
     console.log('[debug] Loading user info...');
     loadTask.set('Loading user information...');
-    extractedData.user = JSON.parse(await readFile('account/user.json'));
-    await fetchUser(extractedData.user.id).then((fetchedUser) => {
-        extractedData.user.username = fetchedUser.username;
-        extractedData.user.discriminator = fetchedUser.discriminator;
-        extractedData.user.avatar_hash = fetchedUser.avatar;
 
-    }).catch(() => {});
+    extractedData.user = JSON.parse(await readFile('account/user.json'));
+    loadTask.set('Fetching user information...');
+    const fetchedUser = await fetchUser(extractedData.user.id);
+    extractedData.user.username = fetchedUser.username;
+    extractedData.user.discriminator = fetchedUser.discriminator;
+    extractedData.user.avatar_hash = fetchedUser.avatar;
+
     const confirmedPayments = extractedData.user.payments.filter((p) => p.status === 1);
     if (confirmedPayments.length) {
         extractedData.payments.total += confirmedPayments.map((p) => p.amount / 100).reduce((p, c) => p + c);
@@ -167,16 +175,24 @@ export const extractData = async (files) => {
     loadTask.set('Loading user messages...');
 
     const messagesIndex = JSON.parse(await readFile('messages/index.json'));
-    const messagesPathRegex = /messages\/c([0-9]{16,32})\/$/;
-    const channelsIDs = files.filter((file) => messagesPathRegex.test(file.name)).map((file) => file.name.match(messagesPathRegex)[1]);
 
+    const messagesPathRegex = /messages\/c?([0-9]{16,32})\/$/;
+    const channelsIDsFile = files.filter((file) => messagesPathRegex.test(file.name));
+
+    // Packages before 06-12-2021 does not have the leading "c" before the channel ID
+    const isOldPackage = channelsIDsFile[0].name.match(/messages\/(c)?([0-9]{16,32})\/$/)[1] === undefined;
+    const channelsIDs = channelsIDsFile.map((file) => file.name.match(messagesPathRegex)[1]);
+
+    console.log(`[debug] Old package: ${isOldPackage}`);
+
+    const channels = [];
     let messagesRead = 0;
 
     await Promise.all(channelsIDs.map((channelID) => {
         return new Promise((resolve) => {
 
-            const channelDataPath = `messages/c${channelID}/channel.json`;
-            const channelMessagesPath = `messages/c${channelID}/messages.csv`;
+            const channelDataPath = `messages/${isOldPackage ? '' : 'c'}${channelID}/channel.json`;
+            const channelMessagesPath = `messages/${isOldPackage ? '' : 'c'}${channelID}/messages.csv`;
 
             Promise.all([
                 readFile(channelDataPath),
@@ -184,7 +200,7 @@ export const extractData = async (files) => {
             ]).then(([ rawData, rawMessages ]) => {
 
                 if (!rawData || !rawMessages) {
-                    console.log(`[debug] Files of channel ${channelID} can't be read. Data is ${!!rawData} and messages are ${!!rawMessages}.`);
+                    console.log(`[debug] Files of channel ${channelID} can't be read. Data is ${!!rawData} and messages are ${!!rawMessages}. (path=${channelDataPath})`);
                     return resolve();
                 } else messagesRead++;
 
@@ -193,7 +209,7 @@ export const extractData = async (files) => {
                 const name = messagesIndex[data.id];
                 const isDM = data.recipients && data.recipients.length === 2;
                 const dmUserID = isDM ? data.recipients.find((userID) => userID !== extractedData.user.id) : undefined;
-                extractedData.channels.push({
+                channels.push({
                     data,
                     messages,
                     name,
@@ -209,18 +225,32 @@ export const extractData = async (files) => {
 
     if (messagesRead === 0) throw new Error('invalid_package_missing_messages');
 
-    console.log(`[debug] ${extractedData.channels.length} channels loaded.`);
+    loadTask.set('Calculating statistics...');
+
+    extractedData.channelCount = channels.filter(c => !c.isDM).length;
+    extractedData.dmChannelCount = channels.length - extractedData.channelCount;
+    extractedData.topChannels = channels.filter(c => c.data && c.data.guild).sort((a, b) => b.messages.length - a.messages.length).slice(0, 10).map((channel) => ({
+        name: channel.name,
+        messageCount: channel.messages.length,
+        guildName: channel.data.guild.name
+    }));
+    extractedData.characterCount = channels.map((channel) => channel.messages).flat().map((message) => message.length).reduce((p, c) => p + c);
+
+    for (let i = 0; i < 24; i++) {
+        extractedData.hoursValues.push(channels.map((c) => c.messages).flat().filter((m) => new Date(m.timestamp).getHours() === i).length);
+    }
+
+    console.log(`[debug] ${channels.length} channels loaded.`);
 
     console.log('[debug] Loading guilds...');
     loadTask.set('Loading joined servers...');
 
     const guildIndex = JSON.parse(await readFile('servers/index.json'));
-    const guilds = Object.entries(guildIndex).map(g => ({ id: g[0], name: g[1] }));
-    extractedData.guilds = guilds;
+    extractedData.guildCount = Object.keys(guildIndex).length;
 
-    console.log(`[debug] ${guilds.length} guilds loaded`);
+    console.log(`[debug] ${extractedData.guildCount} guilds loaded`);
 
-    const words = extractedData.channels.map((channel) => channel.messages).flat().map((message) => message.words).flat().filter((w) => w.length > 5);
+    const words = channels.map((channel) => channel.messages).flat().map((message) => message.words).flat().filter((w) => w.length > 5);
     extractedData.favoriteWords = getFavoriteWords(words);
     for (let wordData of extractedData.favoriteWords) {
         const userID = parseMention(wordData.word);
@@ -236,14 +266,20 @@ export const extractData = async (files) => {
     console.log('[debug] Fetching top DMs...');
     loadTask.set('Loading user activity...');
     
-    extractedData.topDMs = extractedData.channels
+    extractedData.topDMs = channels
         .filter((channel) => channel.isDM)
         .sort((a, b) => b.messages.length - a.messages.length)
-        .slice(0, 20);
+        .slice(0, 10)
+        .map((channel) => ({
+            id: channel.data.id,
+            dmUserID: channel.dmUserID,
+            messageCount: channel.messages.length,
+            userData: null
+        }));
     await Promise.all(extractedData.topDMs.map((channel) => {
         return new Promise((resolve) => {
             fetchUser(channel.dmUserID).then((userData) => {
-                const channelIndex = extractedData.topDMs.findIndex((c) => c.data.id === channel.data.id);
+                const channelIndex = extractedData.topDMs.findIndex((c) => c.id === channel.id);
                 extractedData.topDMs[channelIndex].userData = userData;
                 resolve();
             });
@@ -271,9 +307,7 @@ export const extractData = async (files) => {
 
     loadTask.set('Calculating statistics...');
 
-    for (let i = 0; i < 24; i++) {
-        extractedData.hoursValues.push(extractedData.channels.map((c) => c.messages).flat().filter((m) => new Date(m.timestamp).getHours() === i).length);
-    }
+    console.log(extractedData);
 
     return extractedData;
 };

@@ -1,14 +1,14 @@
 <script>
     export let svg;
     export let strokeWidth = 2;
-    export let strokeLinecap = "round";
-    export let strokeLinejoin = "round"
+    export let strokeLinecap = 'round';
+    export let strokeLinejoin = 'round';
     export let count = null;
     export let content = null;
     export let explanation = null;
 
     const htmlContent = content ?
-        content.includes('%') ? content.split('%')[0] + '<span class="text-discord">' + (count ? count.toLocaleString('en-US') : 'N/A') + '</span>' + content.split('%')[1] : content
+        content.includes('%') ? content.split('%')[0] + '<span class="text-discord">' + ((count === 0 || count) ? count.toLocaleString('en-US') : 'N/A') + '</span>' + content.split('%')[1] : content
         : null;
 </script>
 
@@ -22,7 +22,7 @@
         </slot>
     </div>
     <slot name="explanation">
-        {#if explanation && count}
+        {#if explanation && (count === 0 || count)}
             <small>{ explanation }</small>
         {:else if !count && content}
             <small>This data is not available as you changed your Discord privacy settings</small>
